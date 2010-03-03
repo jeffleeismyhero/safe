@@ -22,17 +22,27 @@ module Astrails
           opts[:password] = password if password
           opts[:port] = port if port
           Net::SFTP.start(host, user, opts) do |sftp|
-            puts "Sending #{@backup.path} to #{full_path}" if $_VERBOSE
             begin
+              puts "Sending #{@backup.path} to #{full_path}" if $_VERBOSE
               sftp.upload! @backup.path, full_path
-            rescue Net::SFTP::StatusException
+            rescue Net::SFTP::StatusException => e
+              raise RuntimeError, "Permission denied when attempting to upload to remote path #{full_path}" if e.description == 'permission denied'
+
               puts "Ensuring remote path (#{path}) exists" if $_VERBOSE
               # mkdir -p
               folders = path.split('/')
               folders.each_index do |i|
                 folder = folders[0..i].join('/')
-                puts "Creating #{folder} on remote" if $_VERBOSE
-                sftp.mkdir!(folder) rescue Net::SFTP::StatusException
+                
+                next if folder.empty?
+
+                puts "Attempting to create #{folder} on remote" if $_VERBOSE
+                
+                begin
+                  sftp.mkdir!(folder) 
+                rescue Net::SFTP::StatusException => e
+                  raise RuntimeError, "Permission denied when attempting to create remote path #{folder}" if e.description == 'permission denied'
+                end
               end
               retry
             end
